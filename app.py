@@ -133,34 +133,54 @@ def safe_math(expression):
     return visit(tree)
 
 def try_local_ai(question, history):
-    """Calls an optional OpenAI-compatible local endpoint when configured."""
-    if not AI_URL:
-        return None
-    messages = [{"role": "system", "content":
-        "You are Jibon Roy AI, a helpful assistant. Answer clearly in the language the user uses. "
-        "Be honest about uncertainty; do not claim to know everything."}]
+    """Call Groq and log safe diagnostic details if the request fails."""
+    import urllib.error
+
+    if not GROQ_API_KEY:
+        print("AI error: GROQ_API_KEY is missing.")
+        return "AI সংযোগ ব্যর্থ: সার্ভারে API Key সেট করা নেই।"
+
+    messages = [{
+        "role": "system",
+        "content": "You are Jibon Roy AI, a helpful assistant. Answer clearly in the user's language. Be honest about uncertainty."
+    }]
     for item in history[-8:]:
         messages.append({"role": "user", "content": item["q"]})
         messages.append({"role": "assistant", "content": item["a"]})
     messages.append({"role": "user", "content": question})
+
     payload = json.dumps({
         "model": AI_MODEL,
         "messages": messages,
         "temperature": 0.5,
         "max_tokens": 700
     }).encode("utf-8")
+
     req = urllib.request.Request(
         AI_URL.rstrip("/") + "/chat/completions",
         data=payload,
-        headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ_API_KEY, "User-Agent": "JibonRoyAI/1.0"},
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + GROQ_API_KEY,
+            "User-Agent": "JibonRoyAI/1.0"
+        },
         method="POST"
     )
+
     try:
-        with urllib.request.urlopen(req, timeout=90) as response:
+        with urllib.request.urlopen(req, timeout=60) as response:
             data = json.loads(response.read().decode("utf-8"))
         return data["choices"][0]["message"]["content"].strip()
-    except Exception:
-        return "AI মডেলের সঙ্গে সংযোগ করা যায়নি। মডেল সার্ভার চালু আছে কি না এবং সেটিংস ঠিক আছে কি না পরীক্ষা করুন।"
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:1000]
+        print(f"AI HTTP error: status={exc.code}; detail={detail}")
+        return f"AI সংযোগে HTTP ত্রুটি হয়েছে (কোড {exc.code})। Render Logs পরীক্ষা করুন।"
+    except urllib.error.URLError as exc:
+        print(f"AI network error: {exc.reason}")
+        return "AI সার্ভারে সংযোগ করা যায়নি। Render Logs পরীক্ষা করুন।"
+    except Exception as exc:
+        print(f"AI unexpected error: {type(exc).__name__}: {exc}")
+        return "AI উত্তর তৈরি করতে পারেনি। Render Logs পরীক্ষা করুন।"
 
 def answer_question(question, history):
     q = question.strip()

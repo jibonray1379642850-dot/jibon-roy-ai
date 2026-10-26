@@ -10,8 +10,22 @@ app.secret_key = os.environ.get("JIBON_ROY_SECRET", "change-this-local-secret-be
 
 # Optional local AI server (for example, a compatible OpenAI-style endpoint).
 # Set JIBON_ROY_AI_URL and JIBON_ROY_MODEL when you later configure a model.
-AI_URL = os.environ.get("JIBON_ROY_AI_URL", "").strip()
-AI_MODEL = os.environ.get("JIBON_ROY_MODEL", "local-model").strip()
+def read_groq_key():
+    key = os.environ.get("GROQ_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        with open(os.path.join(os.path.dirname(__file__), ".env"), encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("GROQ_API_KEY="):
+                    return line.strip().split("=", 1)[1].strip().strip(chr(34) + chr(39))
+    except OSError:
+        pass
+    return ""
+
+GROQ_API_KEY = read_groq_key()
+AI_URL = os.environ.get("JIBON_ROY_AI_URL", "https://api.groq.com/openai/v1").strip()
+AI_MODEL = os.environ.get("JIBON_ROY_MODEL", "openai/gpt-oss-120b").strip()
 
 PAGE = r"""
 <!doctype html>
@@ -138,7 +152,7 @@ def try_local_ai(question, history):
     req = urllib.request.Request(
         AI_URL.rstrip("/") + "/chat/completions",
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + GROQ_API_KEY, "User-Agent": "JibonRoyAI/1.0"},
         method="POST"
     )
     try:
@@ -176,9 +190,7 @@ def answer_question(question, history):
         return "বাংলাদেশের রাজধানী ঢাকা।"
     if any(x in low for x in ("কে তৈরি করেছে", "who created you", "তোমাকে কে বানিয়েছে")):
         return "এই প্রাথমিক প্রজেক্টটি Jibon Roy AI নামে তৈরি করা হচ্ছে।"
-    return ("এই সংস্করণে ওই প্রশ্নের নির্ভরযোগ্য উত্তর দেওয়ার মতো AI মডেল যুক্ত নেই। "
-            "পরে একটি উপযুক্ত স্থানীয় AI মডেল সংযুক্ত করলে বিস্তৃত প্রশ্নের উত্তর দেওয়া সম্ভব হবে। "
-            "গণিতের জন্য লিখুন: গণনা: 123 * 456")
+    return "দুঃখিত, এই প্রশ্নের উত্তর এখন দিতে পারছি না।"
 
 @app.get("/")
 def home():

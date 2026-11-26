@@ -265,7 +265,7 @@ def ask():
     answer = answer_question(question, history)
     history.append({"q": question, "a": answer})
     session["history"] = history[-12:]
-    return redirect(url_for("home"))
+    return jsonify({"answer": answer, "status": "ok"})
 
 @app.post("/clear")
 def clear():

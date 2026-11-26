@@ -125,31 +125,11 @@ askForm.addEventListener("submit", async (event) => {
             throw new Error("HTTP " + response.status);
         }
 
-        const html = await response.text();
-
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-
-        const botMessages = doc.querySelectorAll(".msg.bot");
-
-        if (botMessages.length) {
-            const latest = botMessages[botMessages.length - 1];
-            const clone = latest.cloneNode(true);
-
-            clone.querySelectorAll("strong").forEach(el => el.remove());
-
-            const answer = clone.textContent.trim();
-
-            if (answer) {
-                addMessage("bot", answer);
-            } else {
-                addMessage("bot", "উত্তর পাওয়া গেছে, কিন্তু নতুন UI-তে দেখানো যাচ্ছে না।");
-            }
+        const data = await response.json();
+        if (data && data.status === "ok" && typeof data.answer === "string") {
+            addMessage("bot", data.answer);
         } else {
-            addMessage(
-                "bot",
-                "AI থেকে উত্তর পাওয়া যায়নি। Backend response পরীক্ষা করতে হবে।"
-            );
+            addMessage("bot", "উত্তর পাওয়া যায়নি। Backend response সঠিক নয়।");
         }
 
     } catch (error) {

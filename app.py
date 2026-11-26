@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify
+from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify, send_from_directory
 import ast
 import operator
 import os
@@ -244,7 +244,19 @@ def answer_question(question, history):
 
 @app.get("/")
 def home():
-    return render_template_string(PAGE, history=session.get("history", []))
+    return send_from_directory(".", "index.html")
+
+@app.get("/style.css")
+def serve_css():
+    return send_from_directory(".", "style.css")
+
+@app.get("/game.js")
+def serve_js():
+    return send_from_directory(".", "game.js")
+
+@app.get("/logo.png")
+def serve_logo():
+    return send_from_directory(".", "logo.png")
 
 @app.post("/ask")
 def ask():

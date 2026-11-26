@@ -4,6 +4,7 @@ import base64
 import operator
 import os
 import urllib.request
+import urllib.error
 import json
 
 app = Flask(__name__)
@@ -378,6 +379,70 @@ def ask():
     })
     session["history"] = history[-12:]
     return jsonify({"answer": answer, "status": "ok"})
+
+
+@app.post("/transcribe")
+def transcribe_audio():
+    if not GROQ_API_KEY:
+        return jsonify({"error": "AI API key পাওয়া যায়নি।"}), 500
+
+    audio = request.files.get("audio")
+    if not audio or not audio.filename:
+        return jsonify({"error": "অডিও পাওয়া যায়নি।"}), 400
+
+    audio_data = audio.read()
+    if not audio_data or len(audio_data) > 20 * 1024 * 1024:
+        return jsonify({"error": "অডিও খালি অথবা 20 MB-এর বেশি।"}), 400
+
+    boundary = "----JibonRoyAITranscriptionBoundary"
+    parts = []
+
+    def field(name, value):
+        header = (
+            f"--{boundary}\r\n"
+            f"Content-Disposition: form-data; name=\"{name}\"\r\n\r\n"
+            f"{value}\r\n"
+        )
+        parts.append(header.encode("utf-8"))
+
+    field("model", "whisper-large-v3-turbo")
+    field("language", "bn")
+    field("response_format", "json")
+
+    filename = audio.filename.replace(chr(34), "")
+    content_type = audio.content_type or "audio/webm"
+    file_header = (
+        f"--{boundary}\r\n"
+        f"Content-Disposition: form-data; name=\"file\"; filename=\"{filename}\"\r\n"
+        f"Content-Type: {content_type}\r\n\r\n"
+    )
+    parts.append(file_header.encode("utf-8") + audio_data + b"\r\n")
+
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+
+    body = b"".join(parts)
+    req = urllib.request.Request(
+        AI_URL.rstrip("/") + "/audio/transcriptions",
+        data=body,
+        headers={
+            "Authorization": "Bearer " + GROQ_API_KEY,
+            "Content-Type": "multipart/form-data; boundary=" + boundary
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=90) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        return jsonify({"text": result.get("text", "").strip()})
+
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")
+        print("Transcription API error:", error.code, detail[:1000])
+        return jsonify({"error": "অডিও লেখা করা যায়নি। API error " + str(error.code)}), 502
+    except Exception as error:
+        print("Transcription error:", str(error))
+        return jsonify({"error": "অডিও সার্ভারে পাঠানো যায়নি।"}), 502
 
 @app.post("/clear")
 def clear():

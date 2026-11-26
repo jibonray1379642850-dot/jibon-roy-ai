@@ -52,10 +52,18 @@ attachment.addEventListener("change", () => {
     if (!attachment.files.length) return;
 
     const file = attachment.files[0];
+
+    if (file.type.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.className = "attachment-image-preview";
+        img.src = URL.createObjectURL(file);
+        img.alt = "নির্বাচিত ছবির Preview";
+        attachmentPreview.appendChild(img);
+    }
+
     const chip = document.createElement("div");
     chip.className = "file-chip";
     chip.textContent = "📎 " + file.name;
-
     attachmentPreview.appendChild(chip);
 });
 
@@ -73,7 +81,7 @@ window.fillQuestion = function(text) {
 };
 
 /* ADD MESSAGE */
-function addMessage(role, text) {
+function addMessage(role, text, imageFile = null) {
     const box = document.createElement("div");
     box.className = "message " + role;
 
@@ -86,9 +94,18 @@ function addMessage(role, text) {
     body.textContent = text;
 
     box.appendChild(name);
+
+    if (imageFile && imageFile.type.startsWith("image/")) {
+        const img = document.createElement("img");
+        img.className = "chat-image";
+        img.src = URL.createObjectURL(imageFile);
+        img.alt = "আপনার পাঠানো ছবি";
+        img.loading = "lazy";
+        box.appendChild(img);
+    }
+
     box.appendChild(body);
     chatArea.appendChild(box);
-
     chatArea.scrollTop = chatArea.scrollHeight;
 }
 
@@ -102,7 +119,7 @@ askForm.addEventListener("submit", async (event) => {
 
     const formData = new FormData(askForm);
 
-    addMessage("user", text || "📎 ফাইল পাঠানো হয়েছে");
+    addMessage("user", text || "📎 ফাইল পাঠানো হয়েছে", attachment.files[0] || null);
 
     question.value = "";
     question.style.height = "auto";
@@ -167,53 +184,112 @@ newChatBtn.addEventListener("click", () => {
     }
 });
 
-/* VOICE */
-micBtn.addEventListener("click", () => {
-    if (
-        !("webkitSpeechRecognition" in window) &&
-        !("SpeechRecognition" in window)
-    ) {
-        alert("এই browser-এ voice recognition বর্তমানে পাওয়া যাচ্ছে না।");
+/* VOICE RECORDING */
+let mediaRecorder = null;
+let recordedChunks = [];
+let micStream = null;
+let recording = false;
+
+micBtn.addEventListener("click", async () => {
+    if (recording && mediaRecorder) {
+        mediaRecorder.stop();
+        recording = false;
+        micBtn.textContent = "⏳";
+        micBtn.disabled = true;
         return;
     }
 
-    const SpeechRecognition =
-        window.SpeechRecognition ||
-        window.webkitSpeechRecognition;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
+        !window.MediaRecorder) {
+        alert("এই WebView-তে অডিও রেকর্ডিং সমর্থিত নয়।");
+        return;
+    }
 
-    const recognition = new SpeechRecognition();
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        recordedChunks = [];
 
-    recognition.lang = "bn-BD";
-    recognition.interimResults = true;
-    recognition.continuous = false;
-
-    micBtn.textContent = "🔴";
-
-    recognition.onresult = event => {
-        let text = "";
-
-        for (
-            let i = event.resultIndex;
-            i < event.results.length;
-            i++
-        ) {
-            text += event.results[i][0].transcript;
+        let options = {};
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+            options.mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+            options.mimeType = "audio/webm";
+        } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+            options.mimeType = "audio/mp4";
         }
 
-        question.value = text;
-        question.dispatchEvent(new Event("input"));
-    };
+        mediaRecorder = new MediaRecorder(micStream, options);
 
-    recognition.onerror = () => {
+        mediaRecorder.ondataavailable = event => {
+            if (event.data && event.data.size > 0) {
+                recordedChunks.push(event.data);
+            }
+        };
+
+        mediaRecorder.onerror = () => {
+            alert("অডিও রেকর্ডিংয়ে সমস্যা হয়েছে।");
+            micBtn.textContent = "🎙️";
+            micBtn.disabled = false;
+            recording = false;
+            micStream?.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorder.onstop = async () => {
+            const mime = mediaRecorder.mimeType || "audio/webm";
+            const extension = mime.includes("mp4") ? "mp4" : "webm";
+            const audioBlob = new Blob(recordedChunks, { type: mime });
+
+            micStream?.getTracks().forEach(track => track.stop());
+            micStream = null;
+
+            if (!audioBlob.size) {
+                alert("কোনো অডিও রেকর্ড হয়নি। আবার চেষ্টা করো।");
+                micBtn.textContent = "🎙️";
+                micBtn.disabled = false;
+                return;
+            }
+
+            const form = new FormData();
+            form.append("audio", audioBlob, "recording." + extension);
+
+            try {
+                const response = await fetch("/transcribe", {
+                    method: "POST",
+                    body: form,
+                    credentials: "same-origin"
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "অডিও লেখা করা যায়নি।");
+                }
+
+                if (data.text) {
+                    question.value = data.text;
+                    question.dispatchEvent(new Event("input"));
+                    question.focus();
+                } else {
+                    alert("কথা শনাক্ত হয়নি। একটু পরিষ্কার করে আবার বলো।");
+                }
+            } catch (error) {
+                alert(error.message || "Voice সার্ভারে সমস্যা হয়েছে।");
+            } finally {
+                micBtn.textContent = "🎙️";
+                micBtn.disabled = false;
+            }
+        };
+
+        mediaRecorder.start();
+        recording = true;
+        micBtn.textContent = "⏹️";
+    } catch (error) {
         micBtn.textContent = "🎙️";
-    };
-
-    recognition.onend = () => {
-        micBtn.textContent = "🎙️";
-    };
-
-    recognition.start();
+        micBtn.disabled = false;
+        alert("মাইক্রোফোন চালু হয়নি: " + (error.message || error));
+    }
 });
+
+/* COPY SUPPORT */
 
 /* COPY SUPPORT */
 document.addEventListener("click", event => {

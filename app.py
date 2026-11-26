@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template_string, session, redirect, url_for, jsonify, send_from_directory
 import ast
+import base64
 import operator
 import os
 import urllib.request
@@ -26,6 +27,7 @@ def read_groq_key():
 GROQ_API_KEY = read_groq_key()
 AI_URL = os.environ.get("JIBON_ROY_AI_URL", "https://api.groq.com/openai/v1").strip()
 AI_MODEL = os.environ.get("JIBON_ROY_MODEL", "openai/gpt-oss-120b").strip()
+VISION_MODEL = os.environ.get("JIBON_ROY_VISION_MODEL", "qwen/qwen3.8-27b").strip()
 
 PAGE = r"""
 <!doctype html>
@@ -212,6 +214,107 @@ def try_local_ai(question, history):
         print(f"AI unexpected error: {type(exc).__name__}: {exc}")
         return "AI উত্তর তৈরি করতে পারেনি। Render Logs পরীক্ষা করুন।"
 
+
+def vision_answer(image_file, question, history):
+    import urllib.error
+
+    if not GROQ_API_KEY:
+        return "ছবি বিশ্লেষণ করা যাচ্ছে না: সার্ভারে AI Key নেই।"
+
+    filename = (image_file.filename or "").lower()
+    ext = filename.rsplit(".", 1)[-1] if "." in filename else ""
+    mime_types = {
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp"
+    }
+
+    if ext not in mime_types:
+        return "এখন শুধু JPG, JPEG, PNG ও WEBP ছবি সমর্থিত।"
+
+    image_bytes = image_file.read(10 * 1024 * 1024 + 1)
+
+    if not image_bytes:
+        return "ছবিটি খালি। অন্য ছবি নির্বাচন করুন।"
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        return "ছবির আকার ১০ MB-এর বেশি। ছোট ছবি দিন।"
+
+    signatures = {
+        "jpg": image_bytes.startswith(b"\xff\xd8\xff"),
+        "jpeg": image_bytes.startswith(b"\xff\xd8\xff"),
+        "png": image_bytes.startswith(b"\x89PNG\r\n\x1a\n"),
+        "webp": (
+            len(image_bytes) >= 12
+            and image_bytes[:4] == b"RIFF"
+            and image_bytes[8:12] == b"WEBP"
+        )
+    }
+
+    if not signatures[ext]:
+        return "ছবির ফাইলটি সঠিক ফরম্যাটের নয়।"
+
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    data_url = f"data:{mime_types[ext]};base64,{encoded}"
+
+    messages = [{
+        "role": "system",
+        "content": (
+            "You are Jibon Roy AI. Analyze the supplied image carefully. "
+            "Answer in the user's language, preferably Bengali. "
+            "Read visible text when requested. Do not invent details."
+        )
+    }]
+
+    for item in history[-4:]:
+        messages.append({"role": "user", "content": item["q"]})
+        messages.append({"role": "assistant", "content": item["a"]})
+
+    prompt = question or "এই ছবিতে কী আছে? ছবিটি বিস্তারিত বাংলায় ব্যাখ্যা করো।"
+
+    messages.append({
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {
+                "type": "image_url",
+                "image_url": {"url": data_url}
+            }
+        ]
+    })
+
+    payload = json.dumps({
+        "model": VISION_MODEL,
+        "messages": messages,
+        "temperature": 0.4,
+        "max_completion_tokens": 1024
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        AI_URL.rstrip("/") + "/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + GROQ_API_KEY,
+            "User-Agent": "JibonRoyAI/1.0"
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=90) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        return data["choices"][0]["message"]["content"].strip()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")[:500]
+        print(f"Vision HTTP error: status={exc.code}; detail={detail}")
+        return f"ছবি বিশ্লেষণ ব্যর্থ হয়েছে (HTTP {exc.code})।"
+    except Exception as exc:
+        print(f"Vision error: {type(exc).__name__}: {exc}")
+        return "ছবি বিশ্লেষণ করা যায়নি। সার্ভার লগ পরীক্ষা করুন।"
+
+
 def answer_question(question, history):
     q = question.strip()
     low = q.lower()
@@ -262,8 +365,17 @@ def serve_logo():
 def ask():
     question = request.form.get("q", "").strip()
     history = session.get("history", [])
-    answer = answer_question(question, history)
-    history.append({"q": question, "a": answer})
+    image_file = request.files.get("attachment")
+
+    if image_file and image_file.filename:
+        answer = vision_answer(image_file, question, history)
+    else:
+        answer = answer_question(question, history)
+
+    history.append({
+        "q": question or ("ছবি বিশ্লেষণ" if image_file and image_file.filename else ""),
+        "a": answer
+    })
     session["history"] = history[-12:]
     return jsonify({"answer": answer, "status": "ok"})
 

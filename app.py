@@ -368,6 +368,25 @@ def ask():
     history = session.get("history", [])
     image_file = request.files.get("attachment")
 
+    creator_keywords = (
+        "তোমাকে কে তৈরি করেছে",
+        "তোমাকে কে বানিয়েছে",
+        "তোমাকে কে বানিয়েছে",
+        "কে তৈরি করেছে তোমাকে",
+        "who created you",
+        "who made you",
+        "who built you"
+    )
+
+    if any(keyword in question.lower() for keyword in creator_keywords):
+        answer = "আমাকে জীবন রায় কর্তৃক তৈরি করা হয়েছে। জীবন রায় একজন ছাত্র। জীবন রায় একজন দশম শ্রেণীর ছাত্র এবং নীলফামারী বড়ুয়া বাজারে তার বাড়ি।"
+        history.append({
+            "q": question,
+            "a": answer
+        })
+        session["history"] = history[-12:]
+        return jsonify({"answer": answer, "status": "ok"})
+
     if image_file and image_file.filename:
         answer = vision_answer(image_file, question, history)
     else:

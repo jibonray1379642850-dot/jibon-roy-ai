@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1120">
+<title>Jibon Roy AI</title>
+<link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="app">
+
+<header class="topbar">
+    <div class="brand">
+        <div class="logo-box">
+            <img src="logo.png" alt="Jibon Roy AI" onerror="this.style.display='none'">
+            <span class="logo-fallback">JR</span>
+        </div>
+
+        <div>
+            <div class="brand-name">Jibon Roy AI</div>
+            <div class="online">
+                <span class="dot"></span>
+                AI Assistant
+            </div>
+        </div>
+    </div>
+
+    <button class="icon-btn" id="newChatBtn" title="নতুন চ্যাট">＋</button>
+</header>
+
+
+<main class="chat-area" id="chatArea">
+
+    <section class="welcome">
+        <div class="hero-logo">
+            <img src="logo.png" alt="Logo" onerror="this.style.display='none'">
+            <span class="logo-fallback big">JR</span>
+        </div>
+
+        <h1>Jibon Roy AI</h1>
+
+        <p>
+            বাংলা ও ইংরেজিতে প্রশ্ন করুন।
+            আপনার AI assistant এখন আরও উন্নত হওয়ার পথে।
+        </p>
+
+        <div class="quick-actions">
+            <button onclick="fillQuestion('বাংলাদেশ সম্পর্কে আমাকে বলো')">
+                🌏 সাধারণ প্রশ্ন
+            </button>
+
+            <button onclick="fillQuestion('এই অংকটি সমাধান করে দাও')">
+                🧮 Math
+            </button>
+
+            <button onclick="fillQuestion('এই বিষয়টি সহজভাবে বুঝিয়ে দাও')">
+                📚 Study
+            </button>
+        </div>
+    </section>
+
+</main>
+
+
+<footer class="composer">
+
+    <form id="askForm" method="post" action="https://jibon-roy-ai.onrender.com/ask"
+          enctype="multipart/form-data">
+
+        <div id="attachmentPreview" class="attachment-preview"></div>
+
+        <div class="input-row">
+
+            <button type="button"
+                    class="plus-btn"
+                    id="plusBtn"
+                    title="আরও অপশন">
+                ＋
+            </button>
+
+            <textarea
+                id="question"
+                name="q"
+                maxlength="4000"
+                rows="1"
+                placeholder="Jibon Roy AI-কে কিছু জিজ্ঞেস করুন..."
+                autocomplete="off"></textarea>
+
+            <button type="button"
+                    class="mic-btn"
+                    id="micBtn"
+                    title="Voice">
+                🎙️
+            </button>
+
+            <button type="submit"
+                    class="send-btn"
+                    title="পাঠান">
+                ➤
+            </button>
+        </div>
+
+        <input id="attachment"
+               type="file"
+               name="attachment"
+               accept="image/*,.pdf,.txt"
+               hidden>
+
+    </form>
+
+    <div id="plusMenu" class="plus-menu">
+
+        <button type="button" data-action="image">
+            🖼️
+            <span>ছবি যোগ করুন</span>
+        </button>
+
+        <button type="button" data-action="camera">
+            📷
+            <span>ক্যামেরা</span>
+        </button>
+
+        <button type="button" data-action="file">
+            📄
+            <span>PDF / File</span>
+        </button>
+
+        <button type="button" data-action="edit">
+            ✏️
+            <span>Image Editor</span>
+        </button>
+
+    </div>
+
+    <div class="footer-note">
+        Jibon Roy AI • আপনার AI assistant
+    </div>
+
+</footer>
+
+</div>
+
+<script src="game.js"></script>
+
+</body>
+</html>
